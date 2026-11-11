@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<style>html,body{height:100%}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>3D-модель по КТ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;600&display=swap">
+<style>
+/* Layout: imaging workstation. 3D viewport on the left with view presets over it, a quiet layer/reading panel on the right; stacks on phones */
+:root{
+  --bg:#0C1014;
+  --viewport:#16212A;
+  --surface:#141B21;
+  --surface-2:#1B242C;
+  --line:#28333D;
+  --fg:#E6EBF0;
+  --muted:#8F9DAA;
+  --accent:#F2996A;
+  --accent-soft:rgba(242,153,106,.14);
+  --ghost:#7FD3FF;
+  --label-bg:rgba(12,16,20,.78);
+  --focus:#FFD1B5;
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --font-body:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:14px;line-height:1.5;overflow:hidden}
+.app{position:relative;height:100%;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:12px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+
+.viewer{position:relative;min-width:0;min-height:0;border-radius:14px;overflow:hidden;border:1px solid var(--line);
+  background:radial-gradient(95% 80% at 50% 40%,var(--viewport) 0%,var(--bg) 78%)}
+.viewer canvas{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.viewer canvas:active{cursor:grabbing}
+.viewer::before{content:"";position:absolute;inset:0 0 auto;height:128px;background:linear-gradient(to bottom,rgba(12,16,20,.92) 0%,rgba(12,16,20,.7) 55%,rgba(12,16,20,0) 100%);pointer-events:none;z-index:1}
+.viewer::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(115% 95% at 50% 46%,rgba(0,0,0,0) 52%,rgba(3,5,7,.6) 100%)}
+.head{position:absolute;top:14px;left:16px;right:150px;pointer-events:none;display:grid;gap:4px;z-index:2}
+.quick{position:absolute;top:12px;right:12px;z-index:4;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:stretch;gap:6px;max-width:calc(100% - 24px)}
+.quick>*{box-sizing:border-box;min-height:32px;display:flex;align-items:center;gap:8px;font:inherit;font-size:12.5px;color:var(--fg);background:var(--label-bg);border:1px solid var(--line);border-radius:8px;padding:4px 10px;backdrop-filter:blur(4px)}
+.quick button{cursor:pointer}
+.quick button:hover{border-color:var(--muted)}
+.quick svg{width:14px;height:14px;flex:none}
+.quick .sw{justify-content:flex-start;cursor:pointer}
+.quick .q-rng input{width:112px;margin:0;accent-color:var(--accent)}
+.quick .q-rng output{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);min-width:4ch;text-align:right}
+.quick .ic-close{display:none}
+.app:not(.full) .quick .sw,.app:not(.full) .quick .q-rng{display:none}
+.app:not(.full) .quick .ic-menu{display:none}
+.app:not(.full) .quick .ic-close{display:block}
+.app.full{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:0;padding:0}
+.app.full .panel,.app.full .head,.app.full .hint{display:none}
+.app.full .viewer{border:0;border-radius:0}
+.app.full .viewer::before{display:none}
+.app.full .quick{right:max(12px,env(safe-area-inset-right,0px));max-width:calc(100% - 24px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px))}
+.app.full .dock{left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px))}
+.head h1{margin:0;font-family:var(--font-display);font-weight:600;font-size:clamp(16px,2vw,21px);letter-spacing:.01em;text-wrap:balance}
+.head p{margin:0;color:var(--muted);font-size:12.5px;max-width:52ch}
+.dock{position:absolute;left:12px;right:12px;bottom:12px;z-index:2;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none}
+.dock>*{pointer-events:auto}
+.views{display:flex;flex-wrap:wrap;gap:6px;max-width:100%}
+.slicebar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:5px 10px;width:min(470px,100%);box-sizing:border-box;background:var(--label-bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px 8px 12px;backdrop-filter:blur(4px)}
+.slicebar label{font-size:12.5px;color:var(--muted)}
+.slicebar input{width:100%;margin:0;accent-color:var(--accent)}
+.slicebar button{font:inherit;font-size:16px;line-height:1;width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+.slicebar button:hover{color:var(--fg);border-color:var(--muted)}
+.slicebar output{grid-column:1/-1;font-size:12px;color:var(--fg);min-height:1.5em}
+.slicebar.in output::after{content:" · проходит через образование";color:var(--accent)}
+.sw.sub{padding-left:17px;color:var(--muted)}
+.views button{font:inherit;font-size:12.5px;color:var(--fg);background:var(--label-bg);border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer;backdrop-filter:blur(4px)}
+.views button:hover{border-color:var(--muted)}
+.views button[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.views button.cta{background:var(--accent);border-color:var(--accent);color:#1B1008;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.views button.cta svg{width:14px;height:14px;flex:none}
+.views button.cta:hover{border-color:var(--focus);background:var(--focus)}
+.views button.cta[aria-pressed="true"]{background:var(--accent);color:#1B1008;box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--accent)}
+.hint{position:absolute;right:14px;bottom:14px;z-index:2;color:var(--muted);font-size:11.5px;pointer-events:none;text-align:right}
+button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.labels{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}
+.lbl{position:absolute;left:0;top:0;display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;transform:translate(-9999px,-9999px);will-change:transform}
+.lbl i{width:7px;height:7px;border-radius:50%;background:var(--c);flex:none;box-shadow:0 0 0 2px var(--label-bg)}
+.lbl span{background:var(--label-bg);border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--fg)}
+.lbl.key{z-index:2}
+.lbl.key i{display:none}
+.lbl.key span{border-color:rgba(242,153,106,.42);color:var(--accent);font-weight:500;font-size:11.5px;padding:1px 6px;background:rgba(12,16,20,.6)}
+.lead{position:absolute;left:0;top:0;height:1px;background:linear-gradient(90deg,rgba(242,153,106,.95),rgba(242,153,106,.4));transform-origin:0 50%;transform:translate(-9999px,-9999px);pointer-events:none;will-change:transform}
+.lead::before{content:"";position:absolute;left:-3px;top:-3px;width:5px;height:5px;border-radius:50%;border:1px solid var(--accent);background:rgba(12,16,20,.55)}
+.lbl.flip{flex-direction:row-reverse}
+.lbl.dist i{display:none}
+.lbl.dist span{font-family:var(--font-mono);font-size:11.5px;border-style:dashed;border-color:var(--ghost);color:var(--ghost)}
+.labels[data-off] .lbl,.labels[data-off] .lead{display:none}
+
+.status{z-index:3;position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted);pointer-events:none}
+.status[hidden]{display:none}
+.status b{display:block;color:var(--fg);font-family:var(--font-display);font-weight:500;font-size:14px;margin-bottom:6px}
+
+.panel{min-width:0;min-height:0;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px 18px;display:flex;flex-direction:column;gap:18px}
+.panel h2{margin:0 0 8px;font-family:var(--font-display);font-weight:500;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.ctrls{display:grid;gap:9px}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}
+.sw .nm{display:flex;align-items:center;gap:8px;min-width:0}
+.sw .dot{width:9px;height:9px;border-radius:50%;background:var(--c);flex:none}
+.sw .dot.ring{background:transparent;border:1.5px dashed var(--ghost);box-sizing:border-box}
+.sw input{appearance:none;-webkit-appearance:none;width:34px;height:20px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line);position:relative;flex:none;cursor:pointer;margin:0;transition:background .2s}
+.sw input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--muted);transition:transform .2s,background .2s}
+.sw input:checked{background:var(--accent-soft);border-color:var(--accent)}
+.sw input:checked::after{transform:translateX(14px);background:var(--accent)}
+.range{display:grid;gap:4px}
+.range label{display:flex;justify-content:space-between;color:var(--fg)}
+.range output{font-family:var(--font-mono);color:var(--muted);font-size:12px}
+.range input{width:100%;accent-color:var(--accent);margin:0}
+.sep{height:1px;background:var(--line);margin:3px 0}
+
+.facts{list-style:none;margin:0;padding:0;display:grid;gap:7px}
+.facts li{display:grid;grid-template-columns:12px minmax(0,1fr);gap:8px;align-items:baseline}
+.facts li::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--c,var(--muted));transform:translateY(1px)}
+dl.nums{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;align-items:baseline}
+dl.nums dt{color:var(--muted)}
+dl.nums dd{margin:0;font-family:var(--font-mono);font-variant-numeric:tabular-nums;text-align:right}
+dl.nums dd.hi{color:var(--accent)}
+.note{margin:0;color:var(--muted);font-size:12px;line-height:1.45;border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px}
+.note p{margin:0}
+
+@media (max-width:760px){
+  .app{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto;gap:10px;padding-block:10px}
+  .panel{max-height:40vh;padding:14px 16px}
+  .hint{display:none}
+  .head p{display:none}
+  .head{right:130px}
+  .quick .q-rng input{width:92px}
+}
+@media (max-width:1180px){.hint{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="app full" id="app">
+  <section class="viewer" id="viewer" aria-label="Трёхмерная модель">
+    <div class="labels" id="labels"></div>
+    <header class="head">
+      <h1>Образование слева от аорты</h1>
+      <p>Модель собрана из снимков КТ от 13.10.2026. Кости, сосуды, почки, мочеточники и само образование показаны в настоящей форме и на своих местах.</p>
+    </header>
+    <div class="dock">
+      <div class="slicebar" id="sliceBar" hidden>
+        <label for="sliceZ">Срез</label>
+        <input type="range" id="sliceZ" min="0" max="63" step="1" value="32" aria-describedby="sliceOut">
+        <button type="button" id="sliceOff" title="Убрать срез" aria-label="Убрать срез">×</button>
+        <output id="sliceOut" for="sliceZ"></output>
+      </div>
+      <nav class="views" aria-label="Ракурс">
+        <button type="button" id="v-over" data-view="over" aria-pressed="true">Обзор</button>
+        <button type="button" id="v-close" data-view="close" aria-pressed="false">Крупно</button>
+        <button type="button" id="v-front" data-view="front" aria-pressed="false">Спереди</button>
+        <button type="button" id="v-left" data-view="left" aria-pressed="false">Слева</button>
+        <button type="button" id="v-back" data-view="back" aria-pressed="false">Сзади</button>
+        <button type="button" class="cta" id="v-ct" data-view="ct" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="8" cy="8" rx="6" ry="4.4"/><path d="M1 8h14"/></svg>Срез, как на КТ</button>
+      </nav>
+    </div>
+    <div class="quick" id="quick">
+      <label class="sw" for="q-labels"><span>Подписи</span><input type="checkbox" id="q-labels" checked></label>
+      <label class="q-rng" for="q-skin"><span>Кожа</span><input type="range" id="q-skin" min="0" max="100" value="15"><output id="q-skinOut" for="q-skin">15%</output></label>
+      <button type="button" id="fsNative" title="На весь экран устройства" aria-label="На весь экран устройства" aria-pressed="false" hidden>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4"/></svg>
+      </button>
+      <button type="button" id="fsBtn" aria-expanded="false" aria-controls="panel">
+        <svg class="ic-menu" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+        <svg class="ic-close" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        <span>Меню</span>
+      </button>
+    </div>
+    <div class="hint">Тяните — вращать · колесо или щипок — приблизить<br>правая кнопка или два пальца — сдвиг</div>
+    <div class="status" id="status"><div><b>Загружаю модель</b><span id="statusText">около 10 МБ</span></div></div>
+  </section>
+
+  <aside class="panel" id="panel">
+    <div>
+      <h2>Слои</h2>
+      <div class="ctrls">
+        <div class="range">
+          <label for="skin">Кожа <output id="skinOut" for="skin">15%</output></label>
+          <input type="range" id="skin" min="0" max="100" value="15">
+        </div>
+        <label class="sw" for="l-bone"><span class="nm"><span class="dot" style="--c:#E3D9C3"></span>Кости</span><input type="checkbox" id="l-bone" checked></label>
+        <label class="sw" for="l-artery"><span class="nm"><span class="dot" style="--c:#C8372E"></span>Артерии</span><input type="checkbox" id="l-artery" checked></label>
+        <label class="sw" for="l-vein"><span class="nm"><span class="dot" style="--c:#4C63B8"></span>Нижняя полая вена</span><input type="checkbox" id="l-vein" checked></label>
+        <label class="sw" for="l-kidney"><span class="nm"><span class="dot" style="--c:#A8563F"></span>Почки</span><input type="checkbox" id="l-kidney" checked></label>
+        <label class="sw" for="l-ureter"><span class="nm"><span class="dot" style="--c:#E3C870"></span>Мочеточники и пузырь</span><input type="checkbox" id="l-ureter" checked></label>
+        <label class="sw" for="l-liver"><span class="nm"><span class="dot" style="--c:#8A3D30"></span>Печень и селезёнка</span><input type="checkbox" id="l-liver"></label>
+        <label class="sw" for="l-slice"><span class="nm"><span class="dot" style="--c:#9AA6B2"></span>Срез КТ с ползунком уровня</span><input type="checkbox" id="l-slice"></label>
+        <label class="sw sub" for="t-clip"><span class="nm">Обрезать модель по срезу</span><input type="checkbox" id="t-clip" checked></label>
+        <div class="sep"></div>
+        <label class="sw" for="t-labels"><span class="nm">Подписи</span><input type="checkbox" id="t-labels" checked></label>
+        <label class="sw" for="t-navel"><span class="nm">Путь от пупка</span><input type="checkbox" id="t-navel" checked></label>
+        <label class="sw" for="t-ghost"><span class="nm"><span class="dot ring"></span>Размер в августе 2025</span><input type="checkbox" id="t-ghost"></label>
+      </div>
+    </div>
+
+    <div>
+      <h2>Где находится</h2>
+      <ul class="facts">
+        <li style="--c:#C8372E">Вплотную слева к аорте, на уровне нижней половины позвонка L2 и диска L2–L3</li>
+        <li style="--c:#E3D9C3">Лежит на левой передней поверхности позвонка и прилежит к поясничной мышце</li>
+        <li style="--c:#E3C870">Левый мочеточник — в 5 мм от края образования, снаружи и сзади; между ними слой жира</li>
+        <li style="--c:#A8563F">Левая почка — в 9 мм от края образования</li>
+        <li style="--c:#C8372E">Левые почечные артерия и вена — примерно в 1 см над верхним краем</li>
+        <li style="--c:#7FD3FF">От пупка: 6,5 см вверх, 2,2 см влево, около 10 см вглубь</li>
+      </ul>
+    </div>
+
+    <div>
+      <h2>Размер</h2>
+      <dl class="nums">
+        <dt>КТ 13.10.2026</dt><dd class="hi">24 × 20 × 27 мм</dd>
+        <dt>Объём</dt><dd>≈ 6,8 см³</dd>
+        <dt>МРТ 08.2025</dt><dd>≈ 19 × 18 × 21,5 мм</dd>
+        <dt>Объём тогда</dt><dd>≈ 3,9 см³</dd>
+      </dl>
+    </div>
+
+    <div class="note">
+      <p>Каждая поверхность выделена по плотности из своей фазы КТ: кожа и кости из снимков без контраста, артерии из артериальной фазы, вена, почки и печень из венозной, мочеточники из отсроченной.</p>
+      <p>Форма образования настоящая там, где его окружает жир. Со стороны поясничной мышцы граница проведена по эллипсу: по плотности они на КТ не различаются.</p>
+      <p>Срезы взяты из венозной фазы с шагом 2,5 мм на участке 16 см вокруг образования. Модель обрезается с той стороны, с которой вы смотрите на срез.</p>
+      <p>Тени в щелях и между органами рассчитаны трассировкой лучей по этим же поверхностям. Цвет, фактура кости и блеск органов художественные: на КТ цвета нет.</p>
+      <p>Почечные вены не показаны, их не удалось надёжно выделить. Это иллюстрация по снимкам, а не медицинское заключение.</p>
+    </div>
+  </aside>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<script src="lib/RoomEnvironment.js"></script>
+<script>
+(function () {
+  "use strict";
+  var MAN = {"parts":[{"name":"skin","nv":30011,"nf":59981,"lo":[-22.8561,-32.6473,-11.9779],"hi":[21.5533,38.3473,13.6545],"pos":0,"nrm":180068,"dat":270104,"idx":330128},{"name":"bone","nv":55227,"nf":110000,"lo":[-19.8971,-32.691,-9.6708],"hi":[18.3043,38.3761,12.3998],"pos":690016,"nrm":1021380,"dat":1187064,"idx":1297520},{"name":"bone","nv":55567,"nf":110000,"lo":[-19.8971,-32.691,-9.6708],"hi":[18.3043,38.3761,12.3998],"pos":1957520,"nrm":2290924,"dat":2457628,"idx":2568764},{"name":"bone","nv":54906,"nf":109166,"lo":[-19.8971,-32.691,-9.6708],"hi":[18.3043,38.3761,12.3998],"pos":3228764,"nrm":3558200,"dat":3722920,"idx":3832732},{"name":"artery","nv":44968,"nf":90000,"lo":[-8.73,-32.8908,-5.0444],"hi":[10.196,13.6017,5.6726],"pos":4487728,"nrm":4757536,"dat":4892440,"idx":4982376},{"name":"vein","nv":13004,"nf":26000,"lo":[-7.1918,-25.9677,-2.2987],"hi":[6.845,4.338,4.8013],"pos":5522376,"nrm":5600400,"dat":5639412,"idx":5665420},{"name":"kidneyL","nv":12002,"nf":24000,"lo":[4.176,-3.7226,-5.1605],"hi":[8.981,5.3321,1.066],"pos":5821420,"nrm":5893432,"dat":5929440,"idx":5953444},{"name":"kidneyR","nv":12002,"nf":24000,"lo":[-9.0652,-4.8829,-3.4492],"hi":[-4.0135,3.322,2.3125],"pos":6097444,"nrm":6169456,"dat":6205464,"idx":6229468},{"name":"ureter","nv":12187,"nf":24313,"lo":[-8.2885,-23.322,-4.4476],"hi":[8.1107,4.9112,2.444],"pos":6373468,"nrm":6446592,"dat":6483156,"idx":6507532},{"name":"bladder","nv":4752,"nf":9500,"lo":[-3.9826,-23.393,-2.8861],"hi":[2.7287,-21.6498,1.5863],"pos":6653412,"nrm":6681924,"dat":6696180,"idx":6705684},{"name":"liver","nv":13002,"nf":26000,"lo":[-12.7481,-5.064,-5.7673],"hi":[8.2935,13.4893,10.7917],"pos":6762684,"nrm":6840696,"dat":6879704,"idx":6905708},{"name":"spleen","nv":5002,"nf":10000,"lo":[7.2283,-0.1008,-4.7148],"hi":[12.3858,9.0929,6.9949],"pos":7061708,"nrm":7091720,"dat":7106728,"idx":7116732},{"name":"lesion","nv":8002,"nf":16000,"lo":[1.398,-1.2962,-0.2127],"hi":[3.835,1.346,1.818],"pos":7176732,"nrm":7224744,"dat":7248752,"idx":7264756}],"navel":[0.48,-6.48,10.57],"lesion":[2.68,0.02,0.78],"lesionBox":[[1.398,-1.296,-0.213],[3.835,1.346,1.818]]};
+  var ANCH = {"kidneyL":[7.099,0.23,0.54],"kidneyR":[-6.735,-1.02,1.693],"liver":[-4.784,5.48,10.472],"spleen":[9.952,4.103,0.845],"bladder":[-0.971,-22.77,0.717],"aorta":[0.891,-5.02,2.668],"ivc":[-1.68,-6.02,2.668],"ureterL":[3.668,-7.52,1.334],"L2":[-0.037,-1.8,0.174],"iliacL":[3.729,-16.52,-1.145]};
+  var SL = {"n":64,"grid":8,"tile":[345,283],"start":32,"x":[-15.381,15.213],"z":[13.797,-11.298],"y0":-8.0203,"dy":0.25,"zp0":-475.2,"dzp":2.5,"lesionZ":[-407.9,-381.5],"lesionC":-394.8,"discs":[-328.5,-366.0,-403.5,-441.5,-479.0,-516.0],"names":["T12","L1","L2","L3","L4","L5","S1"]};
+
+  var viewer = document.getElementById("viewer");
+  var statusEl = document.getElementById("status");
+  var statusText = document.getElementById("statusText");
+  function fail(msg) { statusEl.hidden = false; statusEl.querySelector("b").textContent = "Модель не открылась"; statusText.textContent = msg; }
+  if (!window.THREE) { fail("Не загрузилась библиотека для 3D. Проверьте соединение и обновите страницу."); return; }
+
+  var renderer;
+  try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" }); }
+  catch (e) { fail("Браузер не поддерживает WebGL."); return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.8;
+  renderer.setClearColor(0x000000, 0);
+  // the key light and the model do not move, so the shadow map is redrawn only when a layer changes
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.localClippingEnabled = true;
+  function shadowDirty() { renderer.shadowMap.needsUpdate = true; invalidate(); }
+  viewer.insertBefore(renderer.domElement, viewer.firstChild);
+
+  function col(hex) { return new THREE.Color(hex).convertSRGBToLinear(); }
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  var ACCENT = css("--accent") || "#F2996A", GHOST = css("--ghost") || "#7FD3FF";
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(30, 1, 1, 1200);
+  var controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.09;
+  controls.minDistance = 8; controls.maxDistance = 320;
+  controls.rotateSpeed = 0.75; controls.zoomSpeed = 0.9;
+
+  // light: soft studio environment + one warm key and a cool rim
+  try {
+    var pm = new THREE.PMREMGenerator(renderer);
+    scene.environment = pm.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+  } catch (e) { scene.add(new THREE.HemisphereLight(0xdfe8f0, 0x2a2420, 0.9)); }
+  var key = new THREE.DirectionalLight(col("#FFF0DC"), 1.7);
+  key.position.set(52, 112, 104); key.target.position.set(0, -3, 0); scene.add(key); scene.add(key.target);
+  key.castShadow = true;
+  var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  var smap = Math.min(renderer.capabilities.maxTextureSize, coarse ? 2048 : 4096);
+  key.shadow.mapSize.set(smap, smap);
+  var shc = key.shadow.camera; shc.left = -44; shc.right = 44; shc.top = 46; shc.bottom = -46; shc.near = 60; shc.far = 290; shc.updateProjectionMatrix();
+  key.shadow.bias = -0.0006; key.shadow.normalBias = 0.07;
+  var rim = new THREE.DirectionalLight(col("#9CC8FF"), 0.6); rim.position.set(-70, 40, -110); scene.add(rim);
+  // weak light that travels with the camera, so the side facing the viewer never goes flat black
+  var head = new THREE.DirectionalLight(col("#FFE9DA"), 0.22); camera.add(head); camera.add(head.target);
+  head.position.set(0, 0, 0); head.target.position.set(0, 0, -1); scene.add(camera);
+
+  var L = MAN.lesion, NAV = MAN.navel;
+  var lesionC = new THREE.Vector3(L[0], L[1], L[2]);
+  // the cut: one plane shared by every material; it removes the part of the body between the viewer and the slice
+  var clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0), clipOn = false, clipSide = 1, sliceIdx = SL.start;
+  var LES_Y = [MAN.lesionBox[0][1], MAN.lesionBox[1][1]];
+  function sliceY() { return SL.y0 + sliceIdx * SL.dy; }
+
+  // ---------- materials
+  // One shader extension shared by all tissues. It adds, on top of the physical material:
+  //  - ray-traced ambient occlusion baked per vertex (aData.x), applied to ambient light and, more gently, to direct light
+  //  - CT density under the bone surface (aData.y): dense cortex is paler and smoother, spongy bone darker and more porous
+  //  - procedural grain: albedo mottling, roughness variation and a fine bump, all in world centimetres
+  //  - a soft rim of the tissue colour, a cheap stand-in for light scattering inside wet tissue
+  var V_PARS = "attribute vec2 aData;\nvarying vec2 vData;\nvarying vec3 vWPos;\n";
+  var V_MAIN = "\n  vData = aData;\n  vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\n";
+  var F_PARS = [
+    "varying vec2 vData;", "varying vec3 vWPos;",
+    "uniform vec4 uTex;", "uniform vec4 uSurf;", "uniform vec3 uCrev;", "uniform vec3 uAlt;", "uniform float uDen;",
+    "float h13(vec3 p){ p = fract(p * 0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }",
+    "float vnoise(vec3 p){ vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);",
+    "  return mix(mix(mix(h13(i), h13(i + vec3(1.0, 0.0, 0.0)), f.x), mix(h13(i + vec3(0.0, 1.0, 0.0)), h13(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),",
+    "             mix(mix(h13(i + vec3(0.0, 0.0, 1.0)), h13(i + vec3(1.0, 0.0, 1.0)), f.x), mix(h13(i + vec3(0.0, 1.0, 1.0)), h13(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z); }",
+    "float fbm(vec3 p){ float a = 0.5; float s = 0.0; for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = p * 2.03 + 17.1; a *= 0.5; } return s / 0.9375; }",
+    "vec3 bumpN(vec3 sp, vec3 sn, vec2 dH){ vec3 sx = dFdx(sp); vec3 sy = dFdy(sp); vec3 ra = cross(sy, sn); vec3 rb = cross(sn, sx); float det = dot(sx, ra);",
+    "  vec3 g = sign(det) * (dH.x * ra + dH.y * rb); return normalize(abs(det) * sn - g); }", ""
+  ].join("\n");
+  var F_COLOR = [
+    "", "  float nLo = fbm(vWPos * uTex.x);", "  float nHi = fbm(vWPos * uTex.y + 31.7);",
+    "  float aoV = mix(1.0, pow(vData.x, 1.35), uSurf.z);",
+    "  float den = mix(0.5, 0.3 + 0.7 * smoothstep(0.0, 0.55, vData.y), uDen);",
+    "  vec3 alb = mix(diffuseColor.rgb, uAlt, mix(smoothstep(0.3, 0.72, nLo), den, uDen));",
+    "  alb *= 1.0 + uTex.z * (nLo - 0.5) * 2.0;",
+    "  alb *= mix(uCrev, vec3(1.0), smoothstep(0.04, 0.72, aoV));",
+    "  diffuseColor.rgb = alb;", ""
+  ].join("\n");
+  var F_ROUGH = "\n  roughnessFactor = clamp(roughnessFactor + uTex.w * (nHi - 0.5) * 2.0 + uDen * (0.5 - den) * 0.3, 0.05, 1.0);\n";
+  var F_NORMAL = [
+    "", "  {", "    float pxw = length(fwidth(vWPos));",
+    "    float fadeHi = clamp((1.0 / (uTex.y * pxw + 1e-6) - 3.0) / 7.0, 0.0, 1.0);",
+    "    float hgt = uSurf.x * fadeHi * nHi * mix(1.0, 1.7 - den, uDen) + uSurf.y * nLo;",
+    "    normal = bumpN(-vViewPosition, normal, vec2(dFdx(hgt), dFdy(hgt)));", "  }", ""
+  ].join("\n");
+  var F_AO = [
+    "", "  float aoI = aoV * aoV;",
+    "  reflectedLight.indirectDiffuse *= aoI;", "  reflectedLight.indirectSpecular *= aoI;",
+    "  reflectedLight.directDiffuse *= mix(1.0, aoV, 0.5);", "  reflectedLight.directSpecular *= mix(1.0, aoV, 0.6);",
+    "  totalEmissiveRadiance += uSurf.w * diffuseColor.rgb * pow(1.0 - saturate(dot(normal, normalize(vViewPosition))), 2.5) * aoV;", ""
+  ].join("\n");
+  function after(src, marker, code) {
+    if (src.indexOf(marker) < 0) { if (window.console) console.warn("shader marker not found: " + marker); return src; }
+    return src.replace(marker, marker + code);
+  }
+  function tissue(o) {
+    var m = new THREE.MeshPhysicalMaterial({ color: col(o.color), roughness: o.rough, metalness: 0, clearcoat: o.coat || 0, clearcoatRoughness: o.coatRough == null ? 0.25 : o.coatRough, envMapIntensity: o.env == null ? 0.8 : o.env });
+    if (o.emissive) { m.emissive = col(o.emissive); m.emissiveIntensity = o.glow; }
+    var u = {
+      uTex: { value: new THREE.Vector4(o.fLo, o.fHi, o.varA, o.varR) },
+      uSurf: { value: new THREE.Vector4(o.bumpHi, o.bumpLo, o.ao, o.sss) },
+      uCrev: { value: col(o.crev) }, uAlt: { value: col(o.alt || o.color) }, uDen: { value: o.den ? 1 : 0 }
+    };
+    m.userData.u = u; m.extensions = { derivatives: true };
+    m.onBeforeCompile = function (sh) {
+      for (var k in u) sh.uniforms[k] = u[k];
+      sh.vertexShader = after(sh.vertexShader.replace("void main() {", V_PARS + "void main() {"), "#include <begin_vertex>", V_MAIN);
+      var f = sh.fragmentShader.replace("void main() {", F_PARS + "void main() {");
+      f = after(f, "#include <color_fragment>", F_COLOR);
+      f = after(f, "#include <roughnessmap_fragment>", F_ROUGH);
+      f = after(f, "#include <normal_fragment_maps>", F_NORMAL);
+      f = after(f, "#include <aomap_fragment>", F_AO);
+      sh.fragmentShader = f;
+    };
+    return m;
+  }
+  var skinU = { uA: { value: 0.15 } };
+  var skinMat = new THREE.MeshStandardMaterial({ color: col("#C9977A"), roughness: 0.6, metalness: 0, envMapIntensity: 0.5, transparent: true, depthWrite: false, side: THREE.FrontSide });
+  skinMat.onBeforeCompile = function (sh) {
+    sh.uniforms.uA = skinU.uA;
+    sh.fragmentShader = "uniform float uA;\n" + sh.fragmentShader.replace("#include <dithering_fragment>",
+      "#include <dithering_fragment>\n float fr = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.0);\n gl_FragColor.a = clamp(uA + (1.0 - uA) * fr * 0.8 * step(0.004, uA), 0.0, 1.0);");
+  };
+  var kidneyMat = tissue({ color: "#5A1D14", alt: "#74291C", rough: 0.42, coat: 0.8, coatRough: 0.22, env: 0.55, fLo: 0.55, fHi: 9.0, varA: 0.16, varR: 0.08, bumpHi: 0.0022, bumpLo: 0.02, ao: 0.95, sss: 0.16, crev: "#2E0D08" });
+  var mats = {
+    skin: skinMat,
+    bone: tissue({ color: "#967F5C", alt: "#D6C9AA", rough: 0.62, coat: 0.05, coatRough: 0.5, env: 0.36, fLo: 0.24, fHi: 8.0, varA: 0.1, varR: 0.1, bumpHi: 0.012, bumpLo: 0.0, ao: 1.0, sss: 0.0, crev: "#5C3F2B", den: true }),
+    artery: tissue({ color: "#7C0C0A", alt: "#96160F", rough: 0.36, coat: 0.85, coatRough: 0.2, env: 0.6, fLo: 0.8, fHi: 12.0, varA: 0.1, varR: 0.07, bumpHi: 0.0016, bumpLo: 0.01, ao: 0.9, sss: 0.18, crev: "#330606" }),
+    vein: tissue({ color: "#1D2862", alt: "#2B3A80", rough: 0.38, coat: 0.8, coatRough: 0.22, env: 0.6, fLo: 0.7, fHi: 12.0, varA: 0.1, varR: 0.07, bumpHi: 0.0016, bumpLo: 0.012, ao: 0.9, sss: 0.16, crev: "#0B1030" }),
+    kidneyL: kidneyMat, kidneyR: kidneyMat,
+    ureter: tissue({ color: "#B58E3C", alt: "#C9A95C", rough: 0.44, coat: 0.55, coatRough: 0.28, env: 0.5, fLo: 1.2, fHi: 12.0, varA: 0.08, varR: 0.06, bumpHi: 0.0014, bumpLo: 0.006, ao: 0.75, sss: 0.14, crev: "#5A3B10" }),
+    bladder: tissue({ color: "#B08A3A", alt: "#C4A458", rough: 0.46, coat: 0.55, coatRough: 0.28, env: 0.5, fLo: 0.6, fHi: 10.0, varA: 0.1, varR: 0.06, bumpHi: 0.002, bumpLo: 0.02, ao: 0.85, sss: 0.14, crev: "#5A3B10" }),
+    liver: tissue({ color: "#481811", alt: "#5E241C", rough: 0.42, coat: 0.8, coatRough: 0.22, env: 0.55, fLo: 0.4, fHi: 9.0, varA: 0.14, varR: 0.08, bumpHi: 0.002, bumpLo: 0.03, ao: 0.95, sss: 0.14, crev: "#220906" }),
+    spleen: tissue({ color: "#40182E", alt: "#56243C", rough: 0.42, coat: 0.8, coatRough: 0.22, env: 0.55, fLo: 0.4, fHi: 9.0, varA: 0.14, varR: 0.08, bumpHi: 0.002, bumpLo: 0.03, ao: 0.95, sss: 0.14, crev: "#1E0813" }),
+    lesion: tissue({ color: "#C06A22", alt: "#D98A3C", rough: 0.4, coat: 0.75, coatRough: 0.22, env: 0.55, fLo: 1.1, fHi: 11.0, varA: 0.12, varR: 0.07, bumpHi: 0.0016, bumpLo: 0.012, ao: 0.7, sss: 0.22, crev: "#70300C", emissive: "#D9500F", glow: 0.1 })
+  };
+  var ghostMat = new THREE.MeshPhysicalMaterial({ color: col("#3FA9E8"), roughness: 0.4, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.2, envMapIntensity: 0.7, emissive: col("#0E5E8C"), emissiveIntensity: 0.25 });
+  var clipMats = [skinMat, ghostMat];
+  Object.keys(mats).forEach(function (k) { if (clipMats.indexOf(mats[k]) < 0) clipMats.push(mats[k]); });
+  var LAYER = { skin: "skin", bone: "bone", artery: "artery", vein: "vein", kidneyL: "kidney", kidneyR: "kidney", ureter: "ureter", bladder: "ureter", liver: "liver", spleen: "liver", lesion: "lesion" };
+  var groups = {};
+  ["skin", "bone", "artery", "vein", "kidney", "ureter", "liver", "lesion", "slice", "navel"].forEach(function (g) { groups[g] = new THREE.Group(); scene.add(groups[g]); });
+  groups.liver.visible = false; groups.slice.visible = false;
+  groups.skin.renderOrder = 5;
+
+  function buildGeo(buf, e) {
+    var q = new Uint16Array(buf, e.pos, e.nv * 3), pos = new Float32Array(e.nv * 3);
+    var s = [(e.hi[0] - e.lo[0]) / 65535, (e.hi[1] - e.lo[1]) / 65535, (e.hi[2] - e.lo[2]) / 65535];
+    for (var i = 0; i < e.nv; i++) { var j = i * 3; pos[j] = e.lo[0] + q[j] * s[0]; pos[j + 1] = e.lo[1] + q[j + 1] * s[1]; pos[j + 2] = e.lo[2] + q[j + 2] * s[2]; }
+    var g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("aData", new THREE.BufferAttribute(new Uint8Array(buf, e.dat, e.nv * 2), 2, true));
+    g.setIndex(new THREE.BufferAttribute(new Uint16Array(buf, e.idx, e.nf * 3), 1));
+    // meshes split into several pieces carry their own normals, so the pieces join without a seam
+    if (e.nrm != null) g.setAttribute("normal", new THREE.BufferAttribute(new Int8Array(buf, e.nrm, e.nv * 3), 3, true));
+    else g.computeVertexNormals();
+    return g;
+  }
+
+  var lesionMesh = null, ghostMesh = null, halo = null, sliceMat = null, sliceMesh = null, sliceLoad = 0;
+  function buildScene(buf) {
+    MAN.parts.forEach(function (e) {
+      var mesh = new THREE.Mesh(buildGeo(buf, e), mats[e.name]);
+      if (e.name === "skin") mesh.renderOrder = 5; else { mesh.castShadow = true; mesh.receiveShadow = true; }
+      groups[LAYER[e.name]].add(mesh);
+      if (e.name === "lesion") lesionMesh = mesh;
+    });
+    // size in August 2025: the same shape shrunk to the measured diameters (19 x 18 x 21.5 mm against 24 x 21.5 x 25)
+    ghostMesh = new THREE.Mesh(lesionMesh.geometry, ghostMat);
+    var sc = new THREE.Vector3(19 / 24, 21.5 / 25, 18 / 21.5);
+    ghostMesh.scale.copy(sc);
+    ghostMesh.position.set(lesionC.x * (1 - sc.x), lesionC.y * (1 - sc.y), lesionC.z * (1 - sc.z));
+    ghostMesh.visible = false; groups.lesion.add(ghostMesh);
+
+    // soft glow so the lesion can be found from any angle and through any layer
+    var cv = document.createElement("canvas"); cv.width = cv.height = 128;
+    var cx = cv.getContext("2d"), gr = cx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, "rgba(255,140,70,.15)"); gr.addColorStop(0.4, "rgba(255,120,50,.06)"); gr.addColorStop(1, "rgba(255,120,50,0)");
+    cx.fillStyle = gr; cx.fillRect(0, 0, 128, 128);
+    halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, depthWrite: false, transparent: true, blending: THREE.AdditiveBlending, toneMapped: false }));
+    halo.position.copy(lesionC); halo.scale.set(7.5, 7.5, 1); halo.renderOrder = 8; groups.lesion.add(halo);
+
+    // CT slices (venous phase, one every 2.5 mm): a single quad that travels along the body axis and shows the matching tile of an atlas of real slices
+    var sg = new THREE.BufferGeometry();
+    var x0 = SL.x[0], x1 = SL.x[1], z0 = SL.z[0], z1 = SL.z[1];
+    sg.setAttribute("position", new THREE.BufferAttribute(new Float32Array([x0, 0, z0, x1, 0, z0, x1, 0, z1, x0, 0, z1]), 3));
+    sg.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+    sg.setIndex([0, 1, 2, 0, 2, 3]);
+    sliceMat = new THREE.ShaderMaterial({
+      uniforms: { tGray: { value: null }, tMask: { value: null }, uTile: { value: new THREE.Vector2() }, uGrid: { value: SL.grid }, uInset: { value: new THREE.Vector2(0.75 / SL.tile[0], 0.75 / SL.tile[1]) } },
+      vertexShader: "varying vec2 vUv;\nvoid main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+      fragmentShader: "uniform sampler2D tGray; uniform sampler2D tMask; uniform vec2 uTile; uniform float uGrid; uniform vec2 uInset; varying vec2 vUv;\nvoid main(){ vec2 t = clamp(vUv, uInset, 1.0 - uInset); vec2 q = (uTile + t) / uGrid; if (texture2D(tMask, q).r < 0.5) discard; float g = texture2D(tGray, q).r; gl_FragColor = vec4(g, g, g, 1.0); }",
+      side: THREE.DoubleSide
+    });
+    sliceMesh = new THREE.Mesh(sg, sliceMat); sliceMesh.visible = false; groups.slice.add(sliceMesh);
+    // path from the navel: up, to the left, then in depth
+    var N = new THREE.Vector3(NAV[0], NAV[1], NAV[2]);
+    var A = new THREE.Vector3(N.x, lesionC.y, N.z), B = new THREE.Vector3(lesionC.x, lesionC.y, N.z);
+    var lg = new THREE.BufferGeometry().setFromPoints([N, A, B, lesionC]);
+    var line = new THREE.Line(lg, new THREE.LineDashedMaterial({ color: col(GHOST), dashSize: 0.45, gapSize: 0.3, depthTest: false, transparent: true, opacity: 0.95 }));
+    line.computeLineDistances(); line.renderOrder = 9; groups.navel.add(line);
+    var dotG = new THREE.SphereGeometry(0.11, 16, 12), dotM = new THREE.MeshBasicMaterial({ color: col(GHOST), depthTest: false, transparent: true });
+    [N, A, B].forEach(function (p) { var d = new THREE.Mesh(dotG, dotM); d.position.copy(p); d.renderOrder = 9; groups.navel.add(d); });
+    function mid(p, q) { return p.clone().add(q).multiplyScalar(0.5); }
+    function cm(v) { return v.toFixed(1).replace(".", ","); }
+    addLabel("d1", mid(N, A), cm(Math.abs(lesionC.y - N.y)) + " см вверх", GHOST, "dist", "navel", true);
+    addLabel("d2", mid(A, B), cm(Math.abs(lesionC.x - N.x)) + " см влево", GHOST, "dist", "navel", true);
+    addLabel("d3", mid(B, lesionC), cm(Math.abs(N.z - lesionC.z)) + " см вглубь", GHOST, "dist", "navel", true);
+    addLabel("navel", N, "Пупок", GHOST, "", "navel");
+
+    addLabel("lesion", lesionC.clone(), "Образование", ACCENT, "key", "lesion");
+    var P = function (a, dx, dy, dz) { return new THREE.Vector3(a[0] + (dx || 0), a[1] + (dy || 0), a[2] + (dz || 0)); };
+    addLabel("aorta", P(ANCH.aorta, 0, -3.0, 0), "Аорта", "#C8372E", "", "artery");
+    addLabel("ivc", P(ANCH.ivc, 0, 1.0, 0), "Нижняя полая вена", "#4C63B8", "", "vein", true);
+    addLabel("kidL", P(ANCH.kidneyL, 1.4, -2.2, 0), "Левая почка", "#A8563F", "", "kidney");
+    addLabel("kidR", P(ANCH.kidneyR, -1.2, 2.2, 0), "Правая почка", "#A8563F", "", "kidney");
+    if (ANCH.ureterL) addLabel("urL", P(ANCH.ureterL, 0, -2.5, 0), "Левый мочеточник", "#E3C870", "", "ureter", true);
+    addLabel("bladder", P(ANCH.bladder), "Мочевой пузырь", "#E3C870", "", "ureter");
+    addLabel("L2", P(ANCH.L2, -1.6, 2.8, 0.3), "Позвонок L2", "#E3D9C3", "", "bone", true);
+    addLabel("liver", P(ANCH.liver), "Печень", "#8A3D30", "", "liver");
+    addLabel("spleen", P(ANCH.spleen), "Селезёнка", "#74344E", "", "liver");
+  }
+
+  // ---------- labels
+  var labelsEl = document.getElementById("labels"), labels = [];
+  function addLabel(id, pos, text, color, cls, group, tier) {
+    var el = document.createElement("div"); el.className = "lbl" + (cls ? " " + cls : ""); el.style.setProperty("--c", color);
+    var dot = document.createElement("i"), sp = document.createElement("span"); sp.textContent = text;
+    el.appendChild(dot); el.appendChild(sp); labelsEl.appendChild(el);
+    var rec = { el: el, pos: pos, group: group, min: cls === "key" ? 0 : (tier ? 16 : 8.5), key: cls === "key", w: 0, lead: null };
+    if (rec.key) { rec.lead = document.createElement("div"); rec.lead.className = "lead"; labelsEl.appendChild(rec.lead); }
+    labels.push(rec);
+  }
+  // the lesion's own label sits off to the side and points at it with a thin line
+  function placeKey(l, x, y, w, h, pxPerCm) {
+    if (!l.w) l.w = l.el.offsetWidth;
+    var r = Math.min(pxPerCm * 1.25, 150), ox = r * 0.75 + 34, oy = r * 0.75 + 26;
+    var right = x + ox + l.w < w - 8 || x - ox - l.w < 8;
+    var up = y - oy - 12 > 64;
+    var lx = right ? x + ox : x - ox - l.w, ly = up ? y - oy : y + oy;
+    lx = Math.max(6, Math.min(lx, w - l.w - 6)); ly = Math.max(14, Math.min(ly, h - 14));
+    l.el.style.transform = "translate(" + lx.toFixed(1) + "px," + (ly - 10).toFixed(1) + "px)";
+    var ex = right ? lx : lx + l.w, dx = ex - x, dy = ly - y, len = Math.sqrt(dx * dx + dy * dy);
+    l.lead.style.width = len.toFixed(1) + "px";
+    l.lead.style.transform = "translate(" + x.toFixed(1) + "px," + y.toFixed(1) + "px) rotate(" + Math.atan2(dy, dx).toFixed(4) + "rad)";
+  }
+  var tmp = new THREE.Vector3(), skinOpaque = false;
+  function placeLabels() {
+    var w = viewer.clientWidth, h = viewer.clientHeight;
+    // labels thin out as the model gets small on screen: pixels per centimetre at the lesion
+    var pxPerCm = h / (2 * camera.position.distanceTo(lesionC) * Math.tan(camera.fov * Math.PI / 360));
+    for (var i = 0; i < labels.length; i++) {
+      var l = labels[i];
+      tmp.copy(l.pos).project(camera);
+      var clipped = clipOn && clipPlane.distanceToPoint(l.pos) < -0.3;
+      if (!groups[l.group].visible || tmp.z > 1 || tmp.z < -1 || clipped || pxPerCm < l.min || (w < 520 && l.min === 16) || (skinOpaque && !l.key && l.group !== "navel")) { l.el.style.transform = "translate(-9999px,-9999px)"; if (l.lead) l.lead.style.transform = "translate(-9999px,-9999px)"; continue; }
+      var x = (tmp.x * 0.5 + 0.5) * w, y = (-tmp.y * 0.5 + 0.5) * h;
+      if (l.key) { placeKey(l, x, y, w, h, pxPerCm); continue; }
+      if (!l.w) l.w = l.el.offsetWidth;
+      var flip = x + l.w > w - 8 && x - l.w > 8;
+      if (flip !== l.flip) { l.flip = flip; l.el.classList.toggle("flip", flip); }
+      var tx = flip ? x - l.w + 3.5 : Math.max(6, Math.min(x - 3.5, w - l.w - 6));
+      l.el.style.transform = "translate(" + tx.toFixed(1) + "px," + (y - 11).toFixed(1) + "px)";
+    }
+  }
+
+  // ---------- views
+  var VIEWS = {
+    over:  { dir: [0.42, 0.16, 1], dist: 140, fit: 98, target: [0.5, 2.2, 1] },
+    close: { dir: [0.55, 0.22, 1], dist: 34, target: [L[0] - 0.6, L[1] - 0.6, L[2]] },
+    front: { dir: [0, 0.02, 1], dist: 140, fit: 98, target: [0, 2.6, 1] },
+    left:  { dir: [1, 0.04, 0.05], dist: 140, fit: 70, target: [0, 2.6, 1] },
+    back:  { dir: [0, 0.04, -1], dist: 140, fit: 98, target: [0, 2.6, 1] },
+    ct:    { dir: [0, -1, 0.0015], dist: 62, target: [0, 0, 0.5] }
+  };
+  var tween = null, reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function fitDist(d) { var a = camera.aspect; return a < 0.9 ? d * Math.min(2.1, 0.9 / a) * 0.92 : d; }
+  function goView(name, instant) {
+    var v = VIEWS[name]; if (!v) return;
+    var dir = new THREE.Vector3(v.dir[0], v.dir[1], v.dir[2]).normalize();
+    var tgt = new THREE.Vector3(v.target[0], v.target[1], v.target[2]);
+    var pos = tgt.clone().add(dir.multiplyScalar(v.fit ? Math.max(v.dist, v.fit / camera.aspect) : fitDist(v.dist)));
+    if (name === "ct") { lSlice.checked = true; tClip.checked = true; syncSlice(); tgt.y = sliceY(); pos.y += sliceY(); }
+    document.querySelectorAll(".views button").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.view === name ? "true" : "false"); });
+    if (instant || reduce) { camera.position.copy(pos); controls.target.copy(tgt); controls.update(); tween = null; invalidate(); return; }
+    tween = { t0: performance.now(), dur: 850, p0: camera.position.clone(), p1: pos, q0: controls.target.clone(), q1: tgt };
+  }
+  document.querySelectorAll(".views button").forEach(function (b) { b.addEventListener("click", function () { goView(b.dataset.view); }); });
+
+  // ---------- controls
+  function setLayer(g, on) { groups[g].visible = on; shadowDirty(); }
+  [["l-bone", "bone"], ["l-artery", "artery"], ["l-vein", "vein"], ["l-kidney", "kidney"], ["l-ureter", "ureter"], ["l-liver", "liver"], ["t-navel", "navel"]].forEach(function (p) {
+    var el = document.getElementById(p[0]);
+    el.addEventListener("change", function () { setLayer(p[1], el.checked); });
+    groups[p[1]].visible = el.checked;
+  });
+  var tLabels = document.getElementById("t-labels");
+  function syncLabels() { if (tLabels.checked) labelsEl.removeAttribute("data-off"); else labelsEl.setAttribute("data-off", ""); var q = document.getElementById("q-labels"); if (q) q.checked = tLabels.checked; }
+  tLabels.addEventListener("change", syncLabels); syncLabels();
+  var tGhost = document.getElementById("t-ghost");
+  function syncGhost() {
+    if (!lesionMesh) return;
+    var on = tGhost.checked, m = mats.lesion;
+    ghostMesh.visible = on; m.transparent = on; m.opacity = on ? 0.3 : 1; m.depthWrite = !on; m.emissiveIntensity = on ? 0.04 : 0.1; m.needsUpdate = true;
+    lesionMesh.castShadow = !on; lesionMesh.renderOrder = on ? 3 : 0; applyClip();
+  }
+  tGhost.addEventListener("change", syncGhost);
+  var skinEl = document.getElementById("skin"), skinOut = document.getElementById("skinOut");
+  function syncSkin() {
+    var a = (+skinEl.value) / 100; skinOut.textContent = skinEl.value + "%";
+    var qs = document.getElementById("q-skin"); if (qs) { qs.value = skinEl.value; document.getElementById("q-skinOut").textContent = skinEl.value + "%"; }
+    skinU.uA.value = a; groups.skin.visible = a > 0.004;
+    var opaque = a > 0.985; skinOpaque = opaque;
+    if (skinMat.depthWrite !== opaque) { skinMat.depthWrite = opaque; skinMat.needsUpdate = true; }
+    invalidate();
+  }
+  skinEl.addEventListener("input", syncSkin);
+
+  // ---------- CT slice: level slider, lazy loading of the slice atlas, and the cut
+  var sliceEl = document.getElementById("sliceZ"), sliceOut = document.getElementById("sliceOut"), sliceBar = document.getElementById("sliceBar");
+  var lSlice = document.getElementById("l-slice"), tClip = document.getElementById("t-clip");
+  sliceEl.max = SL.n - 1; sliceEl.value = SL.start;
+  function fmtCm(v) { return v.toFixed(1).replace(".", ","); }
+  function loadSlices() {
+    if (sliceLoad !== 0 || !sliceMat) return;
+    sliceLoad = 1;
+    var left = 2, loader = new THREE.TextureLoader();
+    function prep(t) {
+      t.flipY = false; t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter; t.format = THREE.LuminanceFormat; t.needsUpdate = true;
+      if (--left === 0) { sliceLoad = 2; sliceMesh.visible = true; syncSlice(); }
+    }
+    function bad() { sliceLoad = -1; syncSliceText(); }
+    sliceMat.uniforms.tGray.value = loader.load("slices.jpg", prep, undefined, bad);
+    sliceMat.uniforms.tMask.value = loader.load("slices_mask.png", prep, undefined, bad);
+  }
+  function syncSliceText() {
+    var z = SL.zp0 + sliceIdx * SL.dzp, i, lvl = SL.names[SL.names.length - 1], near = null, txt;
+    for (i = 0; i < SL.discs.length; i++) { if (z > SL.discs[i]) { lvl = SL.names[i]; break; } }
+    for (i = 0; i < SL.discs.length; i++) { if (Math.abs(z - SL.discs[i]) < 3) near = SL.names[i] + "–" + SL.names[i + 1]; }
+    txt = near ? "Диск " + near : "Позвонок " + lvl;
+    var d = (z - SL.lesionC) / 10;
+    txt += Math.abs(d) < 0.13 ? " · по центру образования" : " · на " + fmtCm(Math.abs(d)) + " см " + (d > 0 ? "выше" : "ниже") + " центра образования";
+    var inside = z >= SL.lesionZ[0] && z <= SL.lesionZ[1];
+    if (sliceLoad === 1) { txt = "Загружаю срезы…"; inside = false; }
+    if (sliceLoad === -1) { txt = "Срезы не загрузились, обновите страницу"; inside = false; }
+    sliceOut.textContent = txt;
+    sliceBar.classList.toggle("in", inside);
+  }
+  function applyClip() {
+    var want = lSlice.checked && tClip.checked, y = sliceY();
+    if (clipSide > 0) clipPlane.set(new THREE.Vector3(0, -1, 0), y - 0.02); else clipPlane.set(new THREE.Vector3(0, 1, 0), -(y + 0.02));
+    if (want !== clipOn) { clipOn = want; clipMats.forEach(function (m) { m.clippingPlanes = want ? [clipPlane] : null; m.clipShadows = want; m.needsUpdate = true; }); }
+    // the glow marks the lesion only while some of it is still on the kept side of the cut
+    if (halo) halo.visible = !tGhost.checked && !(clipOn && (clipSide > 0 ? y < LES_Y[0] : y > LES_Y[1]));
+    shadowDirty();
+  }
+  function syncSlice() {
+    var on = lSlice.checked;
+    groups.slice.visible = on; sliceBar.hidden = !on;
+    if (on) loadSlices();
+    if (sliceMesh) {
+      sliceMesh.position.y = sliceY();
+      sliceMat.uniforms.uTile.value.set(sliceIdx % SL.grid, Math.floor(sliceIdx / SL.grid));
+    }
+    syncSliceText(); applyClip();
+  }
+  lSlice.addEventListener("change", syncSlice);
+  tClip.addEventListener("change", syncSlice);
+  sliceEl.addEventListener("input", function () { sliceIdx = +sliceEl.value; syncSlice(); });
+  document.getElementById("sliceOff").addEventListener("click", function () { lSlice.checked = false; syncSlice(); });
+  // ---------- render loop (draws only when something changed)
+  var need = true;
+  function invalidate() { need = true; }
+  controls.addEventListener("change", invalidate);
+  controls.addEventListener("start", function () { tween = null; });
+  function resize() {
+    var w = viewer.clientWidth, h = viewer.clientHeight; if (!w || !h) return;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); invalidate();
+  }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(viewer); else window.addEventListener("resize", resize);
+  function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (tween) {
+      var t = Math.min(1, (now - tween.t0) / tween.dur), k = ease(t);
+      camera.position.lerpVectors(tween.p0, tween.p1, k); controls.target.lerpVectors(tween.q0, tween.q1, k);
+      if (t >= 1) tween = null; need = true;
+    }
+    if (controls.update()) need = true;
+    if (clipOn) {
+      // cut away whichever side the viewer is on; a small dead band stops flicker when the camera is level with the slice
+      var dyc = camera.position.y - sliceY(), side = dyc > 0.6 ? 1 : (dyc < -0.6 ? -1 : clipSide);
+      if (side !== clipSide) { clipSide = side; applyClip(); }
+    }
+    if (need) { need = false; renderer.render(scene, camera); placeLabels(); }
+  }
+
+  // ---------- layout: by default the model takes the whole page and only the quick controls stay; the full menu opens on demand
+  var app = document.getElementById("app"), fsBtn = document.getElementById("fsBtn"), fsNative = document.getElementById("fsNative");
+  function setFull(on) {
+    app.classList.toggle("full", on);
+    fsBtn.setAttribute("aria-expanded", on ? "false" : "true");
+    fsBtn.querySelector("span").textContent = on ? "Меню" : "Свернуть";
+    fsBtn.title = on ? "Открыть все настройки" : "Свернуть меню";
+  }
+  fsBtn.addEventListener("click", function () { setFull(!app.classList.contains("full")); });
+  setFull(app.classList.contains("full"));
+  // true full screen of the device, where the browser allows it
+  if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
+    fsNative.hidden = false;
+    fsNative.addEventListener("click", function () {
+      try {
+        var p = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+        if (p && p.catch) p.catch(function () {});
+      } catch (e) {}
+    });
+    document.addEventListener("fullscreenchange", function () { fsNative.setAttribute("aria-pressed", document.fullscreenElement ? "true" : "false"); });
+  }
+  // quick controls mirror the two most used settings of the menu
+  var qLabels = document.getElementById("q-labels"), qSkin = document.getElementById("q-skin"), qSkinOut = document.getElementById("q-skinOut");
+  qLabels.addEventListener("change", function () { tLabels.checked = qLabels.checked; syncLabels(); });
+  qSkin.addEventListener("input", function () { skinEl.value = qSkin.value; syncSkin(); });
+  resize(); goView("over", true); syncSkin(); syncSlice();
+  requestAnimationFrame(frame);
+
+  fetch("meshes.json").then(function (r) {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }).then(function (j) {
+    // surfaces travel as base64 inside a JSON file; unpack to raw bytes
+    var bin = atob(j.b64), n = bin.length, u8 = new Uint8Array(n);
+    for (var i = 0; i < n; i++) u8[i] = bin.charCodeAt(i);
+    return u8.buffer;
+  }).then(function (buf) {
+    statusText.textContent = "собираю поверхности";
+    return new Promise(function (res) { setTimeout(function () { buildScene(buf); res(); }, 30); });
+  }).then(function () {
+    statusEl.hidden = true; syncGhost(); syncSlice();
+    window.__ready = true;
+  }).catch(function (e) {
+    fail("Не удалось загрузить данные модели. Обновите страницу. (" + (e && e.message ? e.message : e) + ")");
+  });
+})();
+</script>
+
+</body>
+</html>
